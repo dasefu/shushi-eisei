@@ -195,6 +195,8 @@ body:not(.lite) .carecut{bottom:auto;top:46%;transform:translate(-50%,-50%) scal
 .m5fig svg{display:block;width:100%;height:auto}
 .m5fig .cap{font-size:11.5px;color:#5F7378;text-align:center;margin:2px 0 0}
 .stgcard .m5fig{margin:4px 0 10px}
+.devtag{display:inline-block;vertical-align:middle;font-size:11px;font-weight:800;color:#8A4B08;background:#FFF1D6;border:1px solid #F2C793;border-radius:999px;padding:1px 8px;margin-left:4px;letter-spacing:.04em}
+.devnote{margin:-2px 0 6px;font-size:12px;color:#8A4B08;background:#FFF8EA;border-radius:8px;padding:4px 10px}
 .stg-h{font-size:15px;margin:14px 0 6px;color:var(--deep,#085C76)}
 .stglist{display:grid;grid-template-columns:1fr;gap:6px}
 .stg{display:flex;align-items:center;gap:10px;text-align:left;font:inherit;border:2px solid #BFDCE6;background:#fff;border-radius:12px;padding:8px 10px;cursor:pointer}
@@ -607,7 +609,8 @@ table.osheet td{font-size:12.5px;vertical-align:top}table.osheet td.c{white-spac
     <div class="modes"><button class="go practice" id="startPractice">練習モード</button><button class="go" id="start">通常モード</button></div>
     <div class="stagesel" id="liteSel" hidden><button data-lite="1">文字少なめ</button></div>
     <p class="note" id="liteNote" hidden>文字少なめ：プレイ中は「◯ ④」「✕ ①」などの大きなマークと、声・効果音で知らせます。くわしい解説は終わったあとの結果画面で読めます。</p>
-    <h2 class="stg-h">指導者向け：観察者モード</h2>
+    <h2 class="stg-h">指導者向け：観察者モード <span class="devtag">開発中</span></h2>
+    <p class="devnote">観察者モードは開発中です。動きや内容が変わることがあります。</p>
     <p class="note" style="margin:-4px 0 8px">スタッフの動きを見て、タイミングと実施を記録します。<br>判定の場面では、カメラが手元に近づきます。</p>
     <div class="stglist obs" id="ostgList"></div>
     <p class="note">練習：ヒントつきで8業務　通常：12業務　手袋を着ける前・外した後の手指消毒は、ステージで練習できます</p>
@@ -1440,7 +1443,7 @@ function updateCamera(dt){
   obsCamApply(dt);SEE.c.value.copy(camera.position);
 }
 /* 観察者モード：判定の場面で、カメラがスタッフの斜め前に回って手元を映す */
-const obsCam={on:false,offAt:0,k:0,key:'',pos:new THREE.Vector3(),tgt:new THREE.Vector3()};
+const obsCam={on:false,offAt:0,k:0,key:'',pos:new THREE.Vector3(),tgt:new THREE.Vector3(),az:null,d:2.15,caz:0,cd:2.15,ct:new THREE.Vector3(),pick:0,init:false};
 function obsClear(x0,z0,x1,z1){ /* カメラとスタッフの間に壁がないか */
   if(x1<-6.5||x1>ROOM_R-0.3||z1<-2.95||z1>5.4)return false;
   const cross=(a,b,v)=>(a-v)*(b-v)<0,walls=STAGE==='ward4'?[ROOM_L,ROOM_R]:[ROOM_L,ROOM_MID,ROOM_R];
@@ -1453,31 +1456,51 @@ function obsClear(x0,z0,x1,z1){ /* カメラとスタッフの間に壁がない
     const a=new THREE.Vector3(x1,1.7,z1),b=new THREE.Vector3(x0,1.1,z0),d=b.clone().sub(a),len=d.length();obsRay.set(a,d.normalize());obsRay.far=len-0.3;
     const vis=o=>{for(let q=o;q;q=q.parent)if(!q.visible)return false;return true;};
     if(obsRay.intersectObjects(obsBlockers,false).some(h=>vis(h.object)))return false;
-    const bx=new THREE.Box3();for(const o of obsBlockers){if(!vis(o))continue;bx.setFromObject(o).expandByScalar(0.18);if(bx.containsPoint(a))return false;}} /* 半透明の箱の中にも入らない */
+    for(const o of obsBlockers){if(!vis(o))continue;if(!o.userData.obBox){o.userData.obBox=new THREE.Box3().setFromObject(o).expandByScalar(0.18);}if(o.userData.obBox.containsPoint(a))return false;}} /* 半透明の箱の中にも入らない（箱は最初に1回だけ計算） */
   return true;}
 function obsCamApply(dt){
   const now=performance.now();if(obsCam.offAt&&now>obsCam.offAt){obsCam.on=false;obsCam.offAt=0;}
   SEE.on.value=isObs()&&!uv.on?1:0;if(SEE.on.value)SEE.p.value.set(nurse.position.x,1.1,nurse.position.z);
-  const want=isObs()&&obsCam.on&&!st.obs.blindNow&&!uv.on?1:0;obsCam.k+=(want-obsCam.k)*Math.min(1,dt*3.5);
-  if(obsCam.k<0.01){obsCam.key='';return;}
-  const p=nurse.position,ry=nurse.rotation.y,key=p.x.toFixed(1)+'|'+p.z.toFixed(1)+'|'+ry.toFixed(1);
-  if(want&&key!==obsCam.key){obsCam.key=key;let best=null;
-    for(const d of [2.15,1.55]){for(const a of [0.65,-0.65,1.15,-1.15,1.57,-1.57,1.9,-1.9]){const x=p.x+Math.sin(ry+a)*d,z=p.z+Math.cos(ry+a)*d;if(obsClear(p.x,p.z,x,z)){best=[x,z];break;}}if(best)break;}
-    if(!best)for(const a of [2.2,-2.2,3.14]){const x=p.x+Math.sin(ry+a)*2.15,z=p.z+Math.cos(ry+a)*2.15;if(obsClear(p.x,p.z,x,z)){best=[x,z];break;}}
-    if(!best)best=[p.x,p.z+1.9];
-    obsCam.pos.set(best[0],1.7,best[1]);obsCam.tgt.set(p.x,1.02,p.z);}
-  const k=obsCam.k*obsCam.k*(3-2*obsCam.k),t=lookAt.clone().lerp(obsCam.tgt,k);
+  const want=isObs()&&obsCam.on&&!st.obs.blindNow&&!uv.on?1:0;obsCam.k=Math.max(0,Math.min(1,obsCam.k+(want?1:-1)*Math.min(dt,0.1)/1.1)); /* 1.1秒かけて一定の速さで寄る・離れる（動き出しと止まりは、下のなめらかな曲線でゆっくり） */
+  if(obsCam.k<0.01){obsCam.key='';obsCam.az=null;obsCam.init=false;return;}
+  const p=nurse.position,ry=nurse.rotation.y;
+  /* 見る角度を選ぶ：0.3秒ごと、かつスタッフが動いたときだけ。いまの角度が見えるうちは変えない（行ったり来たりしない） */
+  if(want&&now-obsCam.pick>300){const key=p.x.toFixed(1)+'|'+p.z.toFixed(1)+'|'+ry.toFixed(1);
+    if(key!==obsCam.key){obsCam.key=key;obsCam.pick=now;
+      const ok=(az,d)=>obsClear(p.x,p.z,p.x+Math.sin(az)*d,p.z+Math.cos(az)*d);
+      if(!(obsCam.az!=null&&ok(obsCam.az,obsCam.d))){let best=null;
+        for(const d of [2.15,1.55]){for(const a of [0.65,-0.65,1.15,-1.15,1.57,-1.57,1.9,-1.9]){if(ok(ry+a,d)){best=[ry+a,d];break;}}if(best)break;}
+        if(!best)for(const a of [2.2,-2.2,3.14]){if(ok(ry+a,2.15)){best=[ry+a,2.15];break;}}
+        if(!best)best=[0,1.9];
+        obsCam.az=best[0];obsCam.d=best[1];}}}
+  if(obsCam.az==null)return;
+  /* 実際のカメラは、スタッフのまわりを円を描くように、なめらかに回りこむ（瞬間移動しない） */
+  /* ばねの動き（動き出しも止まりもゆっくり）：角度・距離・見る点を、それぞれ速さを持たせて近づける */
+  const h=Math.min(dt,0.05),K=7,C=2*Math.sqrt(K);
+  if(!obsCam.init){obsCam.init=true;obsCam.caz=obsCam.az;obsCam.cd=obsCam.d;obsCam.ct.set(p.x,1.02,p.z);obsCam.va=0;obsCam.vd=0;obsCam.vt=new THREE.Vector3();}
+  let da=obsCam.az-obsCam.caz;da=Math.atan2(Math.sin(da),Math.cos(da));
+  obsCam.va+=(da*K-obsCam.va*C)*h;obsCam.caz+=obsCam.va*h;
+  obsCam.vd+=((obsCam.d-obsCam.cd)*K-obsCam.vd*C)*h;obsCam.cd+=obsCam.vd*h;
+  {const tg=new THREE.Vector3(p.x,1.02,p.z).sub(obsCam.ct).multiplyScalar(K*1.6).addScaledVector(obsCam.vt,-C*1.26);obsCam.vt.addScaledVector(tg,h);obsCam.ct.addScaledVector(obsCam.vt,h);}
+  obsCam.pos.set(obsCam.ct.x+Math.sin(obsCam.caz)*obsCam.cd,1.7,obsCam.ct.z+Math.cos(obsCam.caz)*obsCam.cd);obsCam.tgt.copy(obsCam.ct);
+  const k0=obsCam.k,k=k0*k0*k0*(k0*(k0*6-15)+10),t=lookAt.clone().lerp(obsCam.tgt,k);
   camera.position.lerp(obsCam.pos,k);camera.lookAt(t);
 }
 const capCv=document.createElement('canvas');
-function obsCapture(now){ /* リプレイ用に、判定の場面のコマを小さく残す */
+function obsCapture(now){ /* リプレイ用に、判定の場面のコマを小さく残す（変換は後で、少しずつ） */
   if(!isObs())return;const o=st.obs;
   if(o.capUntil&&now>o.capUntil){o.rec=false;o.capUntil=0;}
-  if(!o.rec||o.blindNow||o.open||now-(o.capT||0)<170)return;o.capT=now;
-  try{const c=renderer.domElement,w=260,h=Math.max(1,Math.round(w*c.height/c.width));capCv.width=w;capCv.height=h;capCv.getContext('2d').drawImage(c,0,0,w,h);
-    if(o.frames.length>=46)o.frames.shift();
-    o.frames.push({u:capCv.toDataURL('image/jpeg',0.5),tag:(o.tag&&now<o.tag.until)?o.tag.k:''});}catch(e){o.rec=false;}
+  if(!o.rec||o.blindNow||o.open||now-(o.capT||0)<220)return;o.capT=now;
+  try{const c=renderer.domElement,w=220,h=Math.max(1,Math.round(w*c.height/c.width)),cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(c,0,0,w,h);
+    if(o.frames.length>=36)o.frames.shift();
+    const fr={c:cv,u:'',tag:(o.tag&&now<o.tag.until)?o.tag.k:''};o.frames.push(fr);capQ.push(fr);capIdle();}catch(e){o.rec=false;}
 }
+const capQ=[];let capBusy=false;
+function capIdle(){if(capBusy||!capQ.length)return;capBusy=true;
+  const run=dl=>{const t0=performance.now();while(capQ.length&&performance.now()-t0<4){const fr=capQ.shift();if(fr.c&&!fr.u){try{fr.u=fr.c.toDataURL('image/jpeg',0.5);}catch(e){}fr.c=null;}}
+    capBusy=false;if(capQ.length)capIdle();};
+  if(window.requestIdleCallback)requestIdleCallback(run,{timeout:1500});else setTimeout(run,120);}
+function frameURL(f){if(!f.u&&f.c){try{f.u=f.c.toDataURL('image/jpeg',0.5);}catch(e){}f.c=null;}return f.u;}
 function setBlind(on){const b=$('#obsBlind');if(b)b.hidden=!on;}
 function obsSeg(kind){ /* スタッフが立ち止まった＝判定の場面のはじまり */
   const o=st.obs;if(kind==='idle')return;
@@ -1495,7 +1518,7 @@ function playClip(host,frames){ /* リプレイ（コマ送り） */
   host.innerHTML='<img alt="リプレイ"><span></span>';const im=host.firstChild,cp=host.lastChild;
   {const h=document.createElement('div');h.className='oq-rs';h.textContent='この場面の手指消毒：'+(frames.some(f=>f.tag==='rub')?'あり':'なし');host.before(h);}let i=0,loops=0;clearInterval(host.tm);
   const TAG={rub:'● 手指消毒をしている',on:'● 手袋を着けている',off:'● 手袋を外している',door:'扉・カーテンに触れた',care:'ケアを始めた','':'消毒の動きなし'};
-  const step=()=>{if(!host.isConnected){clearInterval(host.tm);return;}const f=frames[i];im.src=f.u;cp.textContent=TAG[f.tag||''];cp.className=f.tag||'';
+  const step=()=>{if(!host.isConnected){clearInterval(host.tm);return;}const f=frames[i];im.src=frameURL(f);cp.textContent=TAG[f.tag||''];cp.className=f.tag||'';
     i++;if(i>=frames.length){i=0;if(++loops>=3)clearInterval(host.tm);}};
   step();host.tm=setInterval(step,190);}
 
@@ -3125,7 +3148,7 @@ function readStars(){try{return JSON.parse(localStorage.getItem('hhr-stars')||'{
 function writeStars(i,n){const o=readStars();if(!(o[i]>=n)){o[i]=n;try{localStorage.setItem('hhr-stars',JSON.stringify(o));}catch(e){}}}
 function starTxt(n){return '★'.repeat(n)+'<i>'+'★'.repeat(3-n)+'</i>';}
 function renderStages(){const box=$('#stgList');if(!box)return;const S=readStars();let nextSet=false;
-  box.innerHTML=STAGES.map((g,i)=>{const n=S[i]||0,open=i===0||(S[i-1]||0)>0,nx=open&&!n&&!nextSet;if(nx)nextSet=true;
+  box.innerHTML=STAGES.map((g,i)=>{const n=S[i]||0,open=UNLOCK_ALL||i===0||(S[i-1]||0)>0,nx=open&&!n&&!nextSet;if(nx)nextSet=true;
     return `<button class="stg${open?'':' lock'}${nx?' next':''}" data-i="${i}" ${open?'':'disabled'}><span class="no">${open?i+1:'🔒'}</span><span class="tx"><b>${esc(g.title)}</b><small>学ぶこと：${esc(g.learn)}</small></span><span class="st">${starTxt(n)}</span></button>`;}).join('');
   box.querySelectorAll('.stg:not(.lock)').forEach(b=>b.addEventListener('click',()=>stageCard(+b.dataset.i)));
   const G=gradState();if(G.all){const b=document.createElement('button');b.className='gradbtn'+(G.gold?' gold':'');b.id='gradBtn';b.textContent=G.gold?'🏅 金の修了証を見る':'🎓 修了証を見る';b.addEventListener('click',()=>showGrad());box.appendChild(b);}
@@ -3133,6 +3156,8 @@ function renderStages(){const box=$('#stgList');if(!box)return;const S=readStars
 /* 全ステージ修了の特典：修了証（全ステージ★★★で金色） */
 function readOStars(){try{return JSON.parse(localStorage.getItem('hhr-ostars')||'{}');}catch(e){return {};}}
 function writeOStars(i,n){const o=readOStars();if(!(o[i]>=n)){o[i]=n;try{localStorage.setItem('hhr-ostars',JSON.stringify(o));}catch(e){}}}
+/* デバッグ中：すべてのステージを最初から遊べるようにする（本番で順番どおりに戻すときは false にする） */
+const UNLOCK_ALL=true;
 function gradState(kind){const S=kind==='obs'?readOStars():readStars(),L=kind==='obs'?OSTAGES:STAGES;return {all:L.every((g,i)=>S[i]>0),gold:L.every((g,i)=>S[i]===3)};}
 function gradInfo(kind){const key=kind==='obs'?'hhr-ograd':'hhr-grad';let o={};try{o=JSON.parse(localStorage.getItem(key)||'{}')||{};}catch(e){}
   const G=gradState(kind);let ch=false;if(G.all&&!o.t){o.t=Date.now();ch=true;}if(G.gold&&!o.gold){o.gold=Date.now();ch=true;}
@@ -3164,12 +3189,12 @@ const OSTAGES=[
  {title:'4床室：見えない場面',learn:'見えないときの記録',src:5,blind:true,goal:'4床室を観察します。カーテンで手元が見えない場面は、推測せず「見えなかった」と記録します。'},
  {title:'総合：流れる勤務を観察',learn:'まとめ',src:6,level:2,blind:true,goal:'止まらずに進む勤務を観察します。機会に気づいたら、自分で「＋ 機会を記録」。音と文字の手がかりはありません。'}];
 function renderOStages(){const box=$('#ostgList');if(!box)return;const S=readOStars();let nextSet=false;
-  box.innerHTML=OSTAGES.map((g,i)=>{const n=S[i]||0,open=i===0||(S[i-1]||0)>0,nx=open&&!n&&!nextSet;if(nx)nextSet=true;
+  box.innerHTML=OSTAGES.map((g,i)=>{const n=S[i]||0,open=UNLOCK_ALL||i===0||(S[i-1]||0)>0,nx=open&&!n&&!nextSet;if(nx)nextSet=true;
     return `<button class="stg${open?'':' lock'}${nx?' next':''}" data-i="${i}" ${open?'':'disabled'}><span class="no">${open?i+1:'🔒'}</span><span class="tx"><b>${esc(g.title)}</b><small>見きわめること：${esc(g.learn)}</small></span><span class="st">${starTxt(n)}</span></button>`;}).join('');
   box.querySelectorAll('.stg:not(.lock)').forEach(b=>b.addEventListener('click',()=>ostageCard(+b.dataset.i)));
   const G=gradState('obs');if(G.all){const b=document.createElement('button');b.className='gradbtn '+(G.gold?'gold':'obs');b.id='ogradBtn';b.textContent=G.gold?'🏅 観察者の金の修了証を見る':'🎓 観察者の修了証を見る';b.addEventListener('click',()=>showGrad('obs'));box.appendChild(b);}}
 function ostageCard(i){const g=OSTAGES[i];let c=$('#stgCard');if(!c){c=document.createElement('div');c.id='stgCard';document.body.appendChild(c);}c.className='stgcard obs';OBS_PERSONA=-1;
-  c.innerHTML=`<div><div class="k">観察 ステージ ${i+1} / ${OSTAGES.length}　見きわめること：${esc(g.learn)}</div><h3>${esc(g.title)}</h3><p>${esc(g.goal)}</p>
+  c.innerHTML=`<div><div class="k"><span class="devtag">開発中</span> 観察 ステージ ${i+1} / ${OSTAGES.length}　見きわめること：${esc(g.learn)}</div><h3>${esc(g.title)}</h3><p>${esc(g.goal)}</p>
     <div class="pt">${g.level===2?'👀 観察する相手を選べます（手指衛生のクセは、結果でわかります）<div class="pers"><button data-p="-1" class="on">おまかせ</button>'+PERSONAS.map((P,k)=>`<button data-p="${k}">${esc(P.name)}</button>`).join('')+'</div>':'👀 スタッフが立ち止まると、カメラが手元に近づきます。場面ごとに「タイミング」と「したか」を答えます。'}</div>
     <div class="btns"><button class="go sub" id="stgBack">もどる</button><button class="go observe" id="stgGo">はじめる ▶</button></div></div>`;c.hidden=false;
   c.querySelectorAll('.pers button').forEach(b=>b.addEventListener('click',()=>{OBS_PERSONA=+b.dataset.p;c.querySelectorAll('.pers button').forEach(x=>x.classList.toggle('on',x===b));}));
